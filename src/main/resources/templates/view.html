@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Streaming</title>
+    <link rel="stylesheet" th:href="@{'/css/bootstrap.min.css'}">
+    <script th:src="@{'/script/bootstrap.bundle.min.js'}"></script>
+</head>
+<body style="background: #ddd;">
+<div class="container">
+    <div class="row mt-4">
+        <div class="col-12 card p-3">
+            <div>
+                <a class="btn btn-primary my-2" th:href="@{/}">Home</a>
+            </div>
+            <video
+                    width="650px"
+                    height="550px"
+                    oncontextmenu="return false;"
+                    controlsList="nodownload"
+                    controls>
+                <source th:src="@{'/video/stream?title='+${video.getTitle()}}" type="video/mp4">
+            </video>
+            <h2 class="text-primary my-2" th:text="${video.getTitle()}"></h2>
+            <p class="lead" th:text="${video.getDescription()}"></p>
+        </div>
+    </div>
+</div>
+</body>
+</html>
