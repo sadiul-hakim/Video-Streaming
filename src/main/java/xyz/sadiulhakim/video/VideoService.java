@@ -1,11 +1,9 @@
 package xyz.sadiulhakim.video;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.io.*;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,12 +13,13 @@ import xyz.sadiulhakim.exception.JpaException;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class VideoService {
@@ -28,13 +27,15 @@ public class VideoService {
     @Value("${file.upload.base.path:''}")
     private String basePath;
 
+    @Value("${max.chunk.size}")
+    private int chunkSize;
+
     public final VideoRepository videoRepository;
-    private final ResourceLoader resourceLoader;
 
     public Video save(Video video, MultipartFile file) {
 
         try {
-            if (file == null || !file.getContentType().equals("video/mp4")) {
+            if (file == null || !Objects.equals(file.getContentType(), "video/mp4")) {
                 throw new JpaException("VideoService :: Invalid file format.");
             }
 
@@ -111,19 +112,30 @@ public class VideoService {
 
         String[] ranges = range.replace("bytes=", "").split("-");
         rangeStart = Long.parseLong(ranges[0]);
-        rangeEnd = ranges.length > 1 ? Long.parseLong(ranges[1]) : fileLength - 1;
-        long contentLength = rangeEnd - rangeStart + 1;
+        rangeEnd = Math.min(rangeStart + chunkSize, fileLength);
+        long contentLength = rangeEnd - rangeStart;
 
         headers.add(HttpHeaders.CONTENT_RANGE, "bytes " + rangeStart + "-" + rangeEnd + "/" + fileLength);
         headers.setContentLength(contentLength);
-
         InputStream inputStream = Files.newInputStream(path);
-        inputStream.skip(rangeStart);
-        InputStreamResource resource = new InputStreamResource(inputStream);
 
+        // Skip till the start of the range
+        // Suppose we are loading from 5120 to 10,240, so skip from 0 to 5120
+        long skip = inputStream.skip(rangeStart);
+        log.info("VideoService.stream :: Skipped video : {}", skip);
+
+        // Extract data from stream
+        byte[] data = extractBytes(inputStream, (int) contentLength);
         return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
                 .headers(headers)
-                .body(resource);
+                .body(new ByteArrayResource(data));
+    }
+
+    private byte[] extractBytes(InputStream stream, int length) throws IOException {
+        byte[] data = new byte[length];
+        int read = stream.read(data, 0, data.length);
+        log.info("VideoService.extractBytes :: extracted {} bytes", read);
+        return data;
     }
 
     private HttpHeaders getStreamingHeaders(String title) {
@@ -140,18 +152,15 @@ public class VideoService {
 
     private String uploadFile(MultipartFile file) throws IOException {
 
-
         String filename = file.getOriginalFilename();
         InputStream inputStream = file.getInputStream();
         String filePath = basePath + (UUID.randomUUID() + "_" + filename);
 
-//        Thread.ofVirtual().start(() -> {
         try {
             Files.copy(inputStream, Path.of(filePath));
         } catch (Exception ex) {
             throw new JpaException("VideoService :: Could not upload file : " + ex.getMessage());
         }
-//        });
         return filePath;
     }
 }
