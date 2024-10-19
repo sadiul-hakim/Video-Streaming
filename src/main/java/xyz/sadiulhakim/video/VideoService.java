@@ -3,10 +3,11 @@ package xyz.sadiulhakim.video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.*;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.http.*;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import xyz.sadiulhakim.exception.JpaException;
@@ -14,12 +15,14 @@ import xyz.sadiulhakim.exception.JpaException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
@@ -90,26 +93,58 @@ public class VideoService {
 
     public void delete(String id) {
         Video video = findById(id);
-        deleteFile(video.getFilePath());
+
+        Path filePath = Path.of(video.getFilePath());
+        String fileName = filePath.getFileName().toString();
+        Path parent = filePath.getParent();
+        String folderName = fileName.substring(0, fileName.lastIndexOf("."));
+        Path folderPath = parent.resolve(folderName);
+
+        deleteFile(filePath);
+        deleteFile(folderPath);
 
         videoRepository.deleteById(id);
     }
 
-    private void deleteFile(String path) {
+    private void deleteFile(Path path) {
         Thread.ofVirtual().start(() -> {
-            Path pathObj = Path.of(path);
-            if (!Files.exists(pathObj)) {
-                return;
-            }
 
             try {
-                Files.delete(pathObj);
+
+                if (path.toFile().isFile()) {
+                    Files.deleteIfExists(path);
+                } else {
+                    deleteFolder(path);
+                }
+
             } catch (IOException e) {
                 throw new JpaException("VideoService :: Could not delete file : " + path);
             }
         });
     }
 
+    private void deleteFolder(Path path) throws IOException {
+        Files.walkFileTree(path, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                throw new JpaException("VideoService :: Could not delete file : " + file);
+            }
+        });
+    }
+
+    @Deprecated
     public ResponseEntity<Resource> stream(String range, String title) throws IOException {
 
         // Find the video and the file path
@@ -218,8 +253,8 @@ public class VideoService {
             throw new JpaException("VideoService :: Could not upload file : " + ex.getMessage());
         }
 
-        //String fileNameWithoutExtension = newName.split("\\.")[0];
-        //processVideo(filePath, fileNameWithoutExtension);
+        String fileNameWithoutExtension = newName.split("\\.")[0];
+        processVideo(filePath, fileNameWithoutExtension);
 
         return filePath;
     }
