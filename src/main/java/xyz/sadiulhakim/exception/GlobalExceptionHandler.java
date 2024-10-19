@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.ModelAndView;
 
 import java.util.Map;
@@ -22,4 +23,17 @@ public class GlobalExceptionHandler {
         modelAndView.setViewName("index");
         return modelAndView;
     }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public ModelAndView handleStreamError(AsyncRequestNotUsableException exception) {
+        log.error(exception.getMessage());
+        exception.printStackTrace();
+
+        ModelAndView modelAndView = new ModelAndView();
+        modelAndView.addObject("error", true);
+        modelAndView.setViewName("index");
+        return modelAndView;
+    }
+
+
 }

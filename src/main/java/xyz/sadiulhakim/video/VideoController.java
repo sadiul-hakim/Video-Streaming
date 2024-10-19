@@ -2,6 +2,8 @@ package xyz.sadiulhakim.video;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourceRegion;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -12,6 +14,7 @@ import org.springframework.web.servlet.ModelAndView;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 @Controller
 @RequestMapping("/video")
@@ -24,7 +27,7 @@ public class VideoController {
                              @RequestParam String title,
                              @RequestParam String description, ModelAndView modelAndView) {
 
-        title = URLDecoder.decode(title, StandardCharsets.UTF_8);
+        title = URLDecoder.decode(title.trim(), StandardCharsets.UTF_8);
         Video video = new Video();
         video.setTitle(title);
         video.setDescription(description);
@@ -40,6 +43,7 @@ public class VideoController {
 
     @GetMapping("/view")
     public ModelAndView view(@RequestParam String title, ModelAndView modelAndView) {
+        title = URLDecoder.decode(title.trim(), StandardCharsets.UTF_8);
         Video video = videoService.findByTitle(title);
         modelAndView.setViewName("view");
         modelAndView.addObject("video", video);
@@ -48,10 +52,10 @@ public class VideoController {
     }
 
     @GetMapping(path = "/stream")
-    public ResponseEntity<Resource> stream(@RequestParam String title, @RequestHeader(value = "Range", required = false) String range) {
+    public ResponseEntity<ResourceRegion> stream(@RequestParam String title, @RequestHeader HttpHeaders headers) {
 
         try {
-            return videoService.stream(range, title);
+            return videoService.streamV2(title, headers);
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .build();

@@ -4,13 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.*;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.support.ResourceRegion;
+import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import xyz.sadiulhakim.exception.JpaException;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
@@ -40,6 +42,7 @@ public class VideoService {
             }
 
             String filePath = uploadFile(file);
+
             video.setFilePath(filePath);
             if (video.getVideoId() == null || video.getVideoId().isEmpty()) {
                 video.setVideoId(UUID.randomUUID().toString());
@@ -49,6 +52,25 @@ public class VideoService {
             return videoRepository.save(video);
         } catch (Exception ex) {
             throw new JpaException("VideoService :: Could not upload file : " + ex.getMessage());
+        }
+    }
+
+    public void processVideo(String videoPath, String fileName) throws IOException {
+        String hlsPathText = basePath + File.separator + fileName;
+        createFile(hlsPathText);
+
+        String hls360PathText = hlsPathText + "/360/";
+        String hls720PathText = hlsPathText + "/720/";
+        String hls1080PathText = hlsPathText + "/1080/";
+        createFile(hls360PathText);
+        createFile(hls720PathText);
+        createFile(hls1080PathText);
+    }
+
+    private void createFile(String pathText) throws IOException {
+        Path path = Path.of(pathText);
+        if (!Files.exists(path)) {
+            Files.createDirectory(path);
         }
     }
 
@@ -112,7 +134,7 @@ public class VideoService {
 
         String[] ranges = range.replace("bytes=", "").split("-");
         rangeStart = Long.parseLong(ranges[0]);
-        rangeEnd = Math.min(rangeStart + chunkSize, fileLength);
+        rangeEnd = Math.min(rangeStart + chunkSize, fileLength - 1);
         long contentLength = rangeEnd - rangeStart;
 
         headers.add(HttpHeaders.CONTENT_RANGE, "bytes " + rangeStart + "-" + rangeEnd + "/" + fileLength);
@@ -131,6 +153,39 @@ public class VideoService {
                 .body(new ByteArrayResource(data));
     }
 
+    public ResponseEntity<ResourceRegion> streamV2(String title, HttpHeaders headers) throws IOException {
+
+        // Find the video and the file path
+        Video videoObj = findByTitle(title);
+
+        //URI videoUri = new URI("file", video.getFilePath().replace("\\", "/"), null);
+        Path path = Path.of(videoObj.getFilePath());
+
+        FileSystemResource video = new FileSystemResource(path);
+
+        ResourceRegion region = getResourceRegion(video, headers);
+
+        return ResponseEntity
+                .status(HttpStatus.PARTIAL_CONTENT)
+                .contentType(MediaTypeFactory.getMediaType(video).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(region);
+    }
+
+    private ResourceRegion getResourceRegion(FileSystemResource video, HttpHeaders headers) throws IOException {
+        long contentLength = video.contentLength();
+        HttpRange range = headers.getRange().stream().findFirst().orElse(null);
+
+        if (range != null) {
+            long start = range.getRangeStart(contentLength);
+            long end = range.getRangeEnd(contentLength);
+            long rangeLength = Math.min(chunkSize, end - start + 1);
+            return new ResourceRegion(video, start, rangeLength);
+        } else {
+            long rangeLength = Math.min(chunkSize, contentLength);
+            return new ResourceRegion(video, 0, rangeLength);
+        }
+    }
+
     private byte[] extractBytes(InputStream stream, int length) throws IOException {
         byte[] data = new byte[length];
         int read = stream.read(data, 0, data.length);
@@ -146,21 +201,26 @@ public class VideoService {
         headers.add(HttpHeaders.EXPIRES, "0");
         headers.add(HttpHeaders.CONTENT_TYPE, "application/octet-stream");
         headers.add("X-Content-Type-Options", "nosniff");
-
+        headers.add(HttpHeaders.ACCEPT_RANGES, "bytes");
         return headers;
     }
 
     private String uploadFile(MultipartFile file) throws IOException {
 
         String filename = file.getOriginalFilename();
+        String newName = (UUID.randomUUID() + "_" + filename);
+        String filePath = basePath + newName;
         InputStream inputStream = file.getInputStream();
-        String filePath = basePath + (UUID.randomUUID() + "_" + filename);
 
         try {
             Files.copy(inputStream, Path.of(filePath));
         } catch (Exception ex) {
             throw new JpaException("VideoService :: Could not upload file : " + ex.getMessage());
         }
+
+        //String fileNameWithoutExtension = newName.split("\\.")[0];
+        //processVideo(filePath, fileNameWithoutExtension);
+
         return filePath;
     }
 }
