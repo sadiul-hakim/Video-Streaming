@@ -11,17 +11,18 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import xyz.sadiulhakim.exception.JpaException;
+import xyz.sadiulhakim.util.FileUtil;
+import xyz.sadiulhakim.util.StreamUtil;
+import xyz.sadiulhakim.util.VideoUtil;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -44,7 +45,7 @@ public class VideoService {
                 throw new JpaException("VideoService :: Invalid file format.");
             }
 
-            String filePath = uploadFile(file);
+            String filePath = FileUtil.uploadFile(basePath, file);
 
             video.setFilePath(filePath);
             if (video.getVideoId() == null || video.getVideoId().isEmpty()) {
@@ -55,25 +56,6 @@ public class VideoService {
             return videoRepository.save(video);
         } catch (Exception ex) {
             throw new JpaException("VideoService :: Could not upload file : " + ex.getMessage());
-        }
-    }
-
-    public void processVideo(String videoPath, String fileName) throws IOException {
-        String hlsPathText = basePath + File.separator + fileName;
-        createFile(hlsPathText);
-
-        String hls360PathText = hlsPathText + "/360/";
-        String hls720PathText = hlsPathText + "/720/";
-        String hls1080PathText = hlsPathText + "/1080/";
-        createFile(hls360PathText);
-        createFile(hls720PathText);
-        createFile(hls1080PathText);
-    }
-
-    private void createFile(String pathText) throws IOException {
-        Path path = Path.of(pathText);
-        if (!Files.exists(path)) {
-            Files.createDirectory(path);
         }
     }
 
@@ -93,55 +75,8 @@ public class VideoService {
 
     public void delete(String id) {
         Video video = findById(id);
-
-        Path filePath = Path.of(video.getFilePath());
-        String fileName = filePath.getFileName().toString();
-        Path parent = filePath.getParent();
-        String folderName = fileName.substring(0, fileName.lastIndexOf("."));
-        Path folderPath = parent.resolve(folderName);
-
-        deleteFile(filePath);
-        deleteFile(folderPath);
-
+        FileUtil.deleteFileAndFolders(video.getFilePath());
         videoRepository.deleteById(id);
-    }
-
-    private void deleteFile(Path path) {
-        Thread.ofVirtual().start(() -> {
-
-            try {
-
-                if (path.toFile().isFile()) {
-                    Files.deleteIfExists(path);
-                } else {
-                    deleteFolder(path);
-                }
-
-            } catch (IOException e) {
-                throw new JpaException("VideoService :: Could not delete file : " + path);
-            }
-        });
-    }
-
-    private void deleteFolder(Path path) throws IOException {
-        Files.walkFileTree(path, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Files.delete(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                Files.delete(dir);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                throw new JpaException("VideoService :: Could not delete file : " + file);
-            }
-        });
     }
 
     @Deprecated
@@ -153,7 +88,7 @@ public class VideoService {
         Path path = Path.of(video.getFilePath());
 
         // Put some headers
-        HttpHeaders headers = getStreamingHeaders(title);
+        HttpHeaders headers = VideoUtil.getStreamingHeaders(title);
 
         // Check range
         if (range == null || range.isEmpty()) {
@@ -182,7 +117,7 @@ public class VideoService {
         log.info("VideoService.stream :: Skipped video : {}", skip);
 
         // Extract data from stream
-        byte[] data = extractBytes(inputStream, (int) contentLength);
+        byte[] data = StreamUtil.extractBytes(inputStream, (int) contentLength);
         return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
                 .headers(headers)
                 .body(new ByteArrayResource(data));
@@ -198,7 +133,7 @@ public class VideoService {
 
         FileSystemResource video = new FileSystemResource(path);
 
-        ResourceRegion region = getResourceRegion(video, headers);
+        ResourceRegion region = VideoUtil.getResourceRegion(video, headers, chunkSize);
 
         return ResponseEntity
                 .status(HttpStatus.PARTIAL_CONTENT)
@@ -206,56 +141,27 @@ public class VideoService {
                 .body(region);
     }
 
-    private ResourceRegion getResourceRegion(FileSystemResource video, HttpHeaders headers) throws IOException {
-        long contentLength = video.contentLength();
-        HttpRange range = headers.getRange().stream().findFirst().orElse(null);
+    public Optional<Resource> getMasterFile(String title) {
+        Video video = findByTitle(title);
+        String filePath = video.getFilePath();
+        String masterFile = filePath.substring(0, filePath.lastIndexOf(".")) + File.separator + "master.m3u8";
 
-        if (range != null) {
-            long start = range.getRangeStart(contentLength);
-            long end = range.getRangeEnd(contentLength);
-            long rangeLength = Math.min(chunkSize, end - start + 1);
-            return new ResourceRegion(video, start, rangeLength);
-        } else {
-            long rangeLength = Math.min(chunkSize, contentLength);
-            return new ResourceRegion(video, 0, rangeLength);
-        }
-    }
-
-    private byte[] extractBytes(InputStream stream, int length) throws IOException {
-        byte[] data = new byte[length];
-        int read = stream.read(data, 0, data.length);
-        log.info("VideoService.extractBytes :: extracted {} bytes", read);
-        return data;
-    }
-
-    private HttpHeaders getStreamingHeaders(String title) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + title + "\""); // Ensure it's not treated as an attachment
-        headers.add(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate");
-        headers.add(HttpHeaders.PRAGMA, "no-cache");
-        headers.add(HttpHeaders.EXPIRES, "0");
-        headers.add(HttpHeaders.CONTENT_TYPE, "application/octet-stream");
-        headers.add("X-Content-Type-Options", "nosniff");
-        headers.add(HttpHeaders.ACCEPT_RANGES, "bytes");
-        return headers;
-    }
-
-    private String uploadFile(MultipartFile file) throws IOException {
-
-        String filename = file.getOriginalFilename();
-        String newName = (UUID.randomUUID() + "_" + filename);
-        String filePath = basePath + newName;
-        InputStream inputStream = file.getInputStream();
-
-        try {
-            Files.copy(inputStream, Path.of(filePath));
-        } catch (Exception ex) {
-            throw new JpaException("VideoService :: Could not upload file : " + ex.getMessage());
+        if (!Files.exists(Path.of(masterFile))) {
+            return Optional.empty();
         }
 
-        String fileNameWithoutExtension = newName.split("\\.")[0];
-        processVideo(filePath, fileNameWithoutExtension);
+        return Optional.of(new FileSystemResource(masterFile));
+    }
 
-        return filePath;
+    public Optional<Resource> getSegmentFile(String title,String segmentName) {
+        Video video = findByTitle(title);
+        String filePath = video.getFilePath();
+        String masterFile = filePath.substring(0, filePath.lastIndexOf(".")) + File.separator + segmentName;
+
+        if (!Files.exists(Path.of(masterFile))) {
+            return Optional.empty();
+        }
+
+        return Optional.of(new FileSystemResource(masterFile));
     }
 }
