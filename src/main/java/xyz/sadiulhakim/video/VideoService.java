@@ -79,50 +79,6 @@ public class VideoService {
         videoRepository.deleteById(id);
     }
 
-    @Deprecated
-    public ResponseEntity<Resource> stream(String range, String title) throws IOException {
-
-        // Find the video and the file path
-        Video video = findByTitle(title);
-        //URI videoUri = new URI("file", video.getFilePath().replace("\\", "/"), null);
-        Path path = Path.of(video.getFilePath());
-
-        // Put some headers
-        HttpHeaders headers = VideoUtil.getStreamingHeaders(title);
-
-        // Check range
-        if (range == null || range.isEmpty()) {
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(new FileSystemResource(path));
-        }
-
-        // Calculate start and end of the range
-        long fileLength = path.toFile().length();
-        long rangeStart;
-        long rangeEnd;
-
-        String[] ranges = range.replace("bytes=", "").split("-");
-        rangeStart = Long.parseLong(ranges[0]);
-        rangeEnd = Math.min(rangeStart + chunkSize, fileLength - 1);
-        long contentLength = rangeEnd - rangeStart;
-
-        headers.add(HttpHeaders.CONTENT_RANGE, "bytes " + rangeStart + "-" + rangeEnd + "/" + fileLength);
-        headers.setContentLength(contentLength);
-        InputStream inputStream = Files.newInputStream(path);
-
-        // Skip till the start of the range
-        // Suppose we are loading from 5120 to 10,240, so skip from 0 to 5120
-        long skip = inputStream.skip(rangeStart);
-        log.info("VideoService.stream :: Skipped video : {}", skip);
-
-        // Extract data from stream
-        byte[] data = StreamUtil.extractBytes(inputStream, (int) contentLength);
-        return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
-                .headers(headers)
-                .body(new ByteArrayResource(data));
-    }
-
     public ResponseEntity<ResourceRegion> streamV2(String title, HttpHeaders headers) throws IOException {
 
         // Find the video and the file path
