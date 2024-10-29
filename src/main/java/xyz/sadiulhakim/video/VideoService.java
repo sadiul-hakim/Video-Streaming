@@ -128,7 +128,6 @@ public class VideoService {
         // Find the video and the file path
         Video videoObj = findByTitle(title);
 
-        //URI videoUri = new URI("file", video.getFilePath().replace("\\", "/"), null);
         Path path = Path.of(videoObj.getFilePath());
 
         FileSystemResource video = new FileSystemResource(path);
@@ -139,29 +138,5 @@ public class VideoService {
                 .status(HttpStatus.PARTIAL_CONTENT)
                 .contentType(MediaTypeFactory.getMediaType(video).orElse(MediaType.APPLICATION_OCTET_STREAM))
                 .body(region);
-    }
-
-    public Optional<Resource> getMasterFile(String title) {
-        Video video = findByTitle(title);
-        String filePath = video.getFilePath();
-        String masterFile = filePath.substring(0, filePath.lastIndexOf(".")) + File.separator + "master.m3u8";
-
-        if (!Files.exists(Path.of(masterFile))) {
-            return Optional.empty();
-        }
-
-        return Optional.of(new FileSystemResource(masterFile));
-    }
-
-    public Optional<Resource> getSegmentFile(String title,String segmentName) {
-        Video video = findByTitle(title);
-        String filePath = video.getFilePath();
-        String masterFile = filePath.substring(0, filePath.lastIndexOf(".")) + File.separator + segmentName;
-
-        if (!Files.exists(Path.of(masterFile))) {
-            return Optional.empty();
-        }
-
-        return Optional.of(new FileSystemResource(masterFile));
     }
 }

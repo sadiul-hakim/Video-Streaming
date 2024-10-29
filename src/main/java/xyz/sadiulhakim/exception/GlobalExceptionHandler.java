@@ -27,7 +27,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     public ModelAndView handleStreamError(AsyncRequestNotUsableException exception) {
         log.error(exception.getMessage());
-        exception.printStackTrace();
 
         ModelAndView modelAndView = new ModelAndView();
         modelAndView.addObject("error", true);
