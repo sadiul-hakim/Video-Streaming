@@ -9,6 +9,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +21,7 @@ import java.util.List;
 public class VideoController {
     private final VideoService videoService;
 
-    @PostMapping("")
+    @PostMapping
     public ModelAndView save(@RequestParam MultipartFile file,
                              @RequestParam String title,
                              @RequestParam String description, ModelAndView modelAndView) {
@@ -61,14 +62,9 @@ public class VideoController {
     }
 
     @GetMapping("/delete")
-    public ModelAndView delete(@RequestParam String id, ModelAndView modelAndView) {
+    public String delete(@RequestParam String id, RedirectAttributes model) {
         videoService.delete(id);
-
-        List<Video> videos = videoService.findAll();
-        modelAndView.addObject("videos", videos);
-        modelAndView.addObject("deleted", true);
-        modelAndView.setViewName("index");
-
-        return modelAndView;
+        model.addAttribute("deleted", true);
+        return "redirect:/";
     }
 }

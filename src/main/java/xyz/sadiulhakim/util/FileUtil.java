@@ -27,9 +27,6 @@ public class FileUtil {
             throw new JpaException("VideoService :: Could not upload file : " + ex.getMessage());
         }
 
-        String fileNameWithoutExtension = newName.split("\\.")[0];
-        VideoUtil.processVideo(basePath,filePath, fileNameWithoutExtension);
-
         return filePath;
     }
 

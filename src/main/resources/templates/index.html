@@ -45,7 +45,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form th:action="@{'/video'}" enctype="multipart/form-data" method="post">
+                <form th:action="@{'/video'}" enctype="multipart/form-data" method="post" id="uploadForm">
                     <div>
                         <label for="title">Title</label>
                         <input type="text" class="form-control" id="title" name="title" required/>
@@ -68,6 +68,9 @@
                         <button type="reset" class="btn btn-danger">Reset</button>
                     </div>
                 </form>
+                <div class="progress mt-3">
+                    <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%">0%</div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -78,3 +81,39 @@
 
 </body>
 </html>
+
+<script>
+    document.getElementById("uploadForm").addEventListener("submit", function (e) {
+        e.preventDefault();
+
+        const form = e.target;
+        const formData = new FormData(form);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/video");
+
+        xhr.upload.addEventListener("progress", function (e) {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                const progressBar = document.getElementById("progressBar");
+                progressBar.style.width = percent + "%";
+                progressBar.textContent = percent + "%";
+            }
+        });
+
+        xhr.onload = function () {
+            if (xhr.status === 200 || xhr.status === 302) {
+                alert("Upload complete!");
+                window.location.reload(); // Refresh to show new video
+            } else {
+                alert("Upload failed.");
+            }
+        };
+
+        xhr.onerror = function () {
+            alert("Upload error.");
+        };
+
+        xhr.send(formData);
+    });
+</script>

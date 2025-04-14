@@ -3,6 +3,7 @@ package xyz.sadiulhakim.video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -10,6 +11,7 @@ import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import xyz.sadiulhakim.event.VideoEvent;
 import xyz.sadiulhakim.exception.JpaException;
 import xyz.sadiulhakim.util.FileUtil;
 import xyz.sadiulhakim.util.StreamUtil;
@@ -37,6 +39,7 @@ public class VideoService {
     private int chunkSize;
 
     public final VideoRepository videoRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public Video save(Video video, MultipartFile file) {
 
@@ -46,6 +49,7 @@ public class VideoService {
             }
 
             String filePath = FileUtil.uploadFile(basePath, file);
+            eventPublisher.publishEvent(new VideoEvent(basePath, filePath));
 
             video.setFilePath(filePath);
             if (video.getVideoId() == null || video.getVideoId().isEmpty()) {
