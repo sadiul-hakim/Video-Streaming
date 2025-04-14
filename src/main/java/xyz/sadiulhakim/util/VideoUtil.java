@@ -10,6 +10,7 @@ import java.io.IOException;
 
 public class VideoUtil {
 
+    // Breaks the video down into multiple .ts(HLS) file.
     public static void processVideo(String basePath, String videoPath, String fileName) throws IOException, InterruptedException {
 
         String hlsPathText = basePath + File.separator + fileName;
