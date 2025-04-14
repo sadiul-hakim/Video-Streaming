@@ -90,9 +90,12 @@ public class VideoService {
 
         ResourceRegion region = VideoUtil.getResourceRegion(video, headers, chunkSize);
 
+        HttpHeaders streamingHeaders = VideoUtil.getStreamingHeaders(title);
+
         return ResponseEntity
                 .status(HttpStatus.PARTIAL_CONTENT)
                 .contentType(MediaTypeFactory.getMediaType(video).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .headers(streamingHeaders)
                 .body(region);
     }
 }

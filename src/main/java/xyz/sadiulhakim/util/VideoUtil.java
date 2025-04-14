@@ -28,8 +28,6 @@ public class VideoUtil {
             FileUtil.deleteFileAndFolders(videoPath);
             throw new RuntimeException("video processing failed!!");
         }
-
-
     }
 
     public static ResourceRegion getResourceRegion(FileSystemResource video, HttpHeaders headers, int chunkSize) throws IOException {
@@ -53,7 +51,6 @@ public class VideoUtil {
         headers.add(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate");
         headers.add(HttpHeaders.PRAGMA, "no-cache");
         headers.add(HttpHeaders.EXPIRES, "0");
-        headers.add(HttpHeaders.CONTENT_TYPE, "application/octet-stream");
         headers.add("X-Content-Type-Options", "nosniff");
         headers.add(HttpHeaders.ACCEPT_RANGES, "bytes");
         return headers;
